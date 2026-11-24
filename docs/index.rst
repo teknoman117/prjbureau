@@ -13,5 +13,6 @@ Project Bureau
    options/program
    schema
    explore
+   fitter
    jtag/index
    tools/index
