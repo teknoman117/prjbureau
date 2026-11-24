@@ -49,16 +49,18 @@ Virtually every aspect of the ATF15xx architecture is well-understood. However, 
 .. table::
    :widths: auto
 
-   ===================== ============= ============
+   ===================== ============= ======================
    Device(s)             Fuse database Programming
-   ===================== ============= ============
+   ===================== ============= ======================
    **ATF1502AS/ASV/ASL** **Complete**  **Complete**
-   ATF1504AS/ASV/ASL     Near-complete Untested
-   ATF1508AS/ASV/ASL     Partial       Untested
-   ATF1502BE             Near-complete None
-   ATF1504BE             Near-complete None
-   ATF1508BE             Partial       None
-   ===================== ============= ============
+   ATF1504AS/ASV/ASL     Near-complete Matches vendor SVF [#v]_
+   ATF1508AS/ASV/ASL     Partial       Matches vendor SVF [#v]_
+   ATF1502BE             Near-complete Matches vendor SVF [#v]_
+   ATF1504BE             Near-complete Matches vendor SVF [#v]_
+   ATF1508BE             Partial       Matches vendor SVF [#v]_
+   ===================== ============= ======================
+
+.. [#v] The words programmed by SVF files from :doc:`fuseconv <tools/fuseconv>` are identical to those programmed by SVF files the vendor programming software (ATMISP 7.3) writes for the same JED files: for synthetic random fuse maps on every device, and for real designs fitted by the vendor fitter on ATF1504AS and ATF1508AS. Programming has not been confirmed on silicon for these devices; see :doc:`jtag/as` and :doc:`jtag/be`.
 
 Installation
 ============

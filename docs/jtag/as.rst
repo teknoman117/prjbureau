@@ -145,6 +145,8 @@ To read a configuration word ``data`` from address ``addr``:
 Fuse packing
 ============
 
+The permutations below agree, for every fuse of all three AS densities, with the fuse-to-word mapping used by the vendor programming software (ATMISP 7.3), which was determined independently from the SVF files ATMISP writes for JED files that give every fuse a distinct bit pattern; and for real ATF1504AS and ATF1508AS designs the SVF files written by :doc:`fuseconv <../tools/fuseconv>` program the same words as ATMISP's.
+
 Running the place & route tool produces a fuse map; a 1d sequence of fuses. However, the device's Flash memory is organized as a series of words; a 2d array of cells. Fuses can be packed into and unpacked from the Flash memory by applying the permutations described below.
 
 In all of the code fragments below, let ``jed_index`` be the index of a fuse, ``svf_row`` be the address of a word, and ``svf_col`` be the bit offset into the word. Then, packing and unpacking are bit copy operations between the two representations.
