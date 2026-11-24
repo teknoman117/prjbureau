@@ -271,47 +271,47 @@ module OR4I4(input AN, BN, CN, DN, output Q);
 endmodule
 
 module NOR2(input A, B, output QN);
-  assign NQ = ~(A | B);
+  assign QN = ~(A | B);
 endmodule
 
 module NOR3(input A, B, C, output QN);
-  assign NQ = ~(A | B | C);
+  assign QN = ~(A | B | C);
 endmodule
 
 module NOR4(input A, B, C, D, output QN);
-  assign NQ = ~(A | B | C | D);
+  assign QN = ~(A | B | C | D);
 endmodule
 
 module NOR5(input A, B, C, D, E, output QN);
-  assign NQ = ~(A | B | C | D | E);
+  assign QN = ~(A | B | C | D | E);
 endmodule
 
 module NOR6(input A, B, C, D, E, F, output QN);
-  assign NQ = ~(A | B | C | D | E | F);
+  assign QN = ~(A | B | C | D | E | F);
 endmodule
 
 module NOR7(input A, B, C, D, E, F, G, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G);
+  assign QN = ~(A | B | C | D | E | F | G);
 endmodule
 
 module NOR8(input A, B, C, D, E, F, G, H, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G | H);
+  assign QN = ~(A | B | C | D | E | F | G | H);
 endmodule
 
 module NOR9(input A, B, C, D, E, F, G, H, I, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G | H | I);
+  assign QN = ~(A | B | C | D | E | F | G | H | I);
 endmodule
 
 module NOR10(input A, B, C, D, E, F, G, H, I, J, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G | H | I | J);
+  assign QN = ~(A | B | C | D | E | F | G | H | I | J);
 endmodule
 
 module NOR11(input A, B, C, D, E, F, G, H, I, J, K, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G | H | I | J | K);
+  assign QN = ~(A | B | C | D | E | F | G | H | I | J | K);
 endmodule
 
 module NOR12(input A, B, C, D, E, F, G, H, I, J, K, L, output QN);
-  assign NQ = ~(A | B | C | D | E | F | G | H | I | J | K | L);
+  assign QN = ~(A | B | C | D | E | F | G | H | I | J | K | L);
 endmodule
 
 module NOR2I1(input A, BN, output Q);
