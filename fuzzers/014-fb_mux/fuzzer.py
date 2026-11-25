@@ -1,6 +1,53 @@
 from util import database, toolchain, bitdiff, progress
 
 
+# With TT2 input, the fitter dissolves a combinatorial node that only drives output enables,
+# recreates it under its own name, and ignores any constraint for it. It places such a node in
+# the free macrocell it would choose for any floating node, so every other macrocell is filled with
+# a constrained (unused) flip-flop, leaving only the macrocell under test.
+def run_tt2(device_name, device, package, pinout, macrocell_idx, other1_macrocell,
+            other2_macrocell, *, sync):
+    fillers = [f"F{1 + index}"
+               for index, name in enumerate(device['macrocells'])
+               if index != macrocell_idx and
+                  device['macrocells'][name] not in (other1_macrocell, other2_macrocell)]
+    nodes = [f"{name}+:{600 + int(name[1:])}" for name in fillers]
+    inputs = ["OEA", "OEB"]
+    outputs = ["Y0", "Y0.OE", "Y1", "Y1.OE"]
+    if sync:
+        # the same function in a flip-flop in the macrocell under test
+        nodes.append(f"N+:{601 + macrocell_idx}")
+        inputs.append("N.Q")
+        outputs = ["N.C", "N.REG"] + outputs
+        cubes = [("01-", "N.REG"), ("10-", "N.REG"), ("--1", "Y0.OE"), ("--1", "Y1.OE")]
+    else:
+        # the XOR needs two product terms, so the fitter makes it a node
+        cubes = [("01", "Y0.OE"), ("10", "Y0.OE"), ("01", "Y1.OE"), ("10", "Y1.OE")]
+    outputs += [f"{name}.{suffix}" for name in fillers for suffix in ("C", "REG")]
+    rows = [f"{inbits} {''.join('1' if output == out else '0' for out in outputs)}"
+            for inbits, output in cubes]
+    pins = [
+        f"OEA+:{pinout['C1']}",
+        f"OEB+:{pinout['C2']}",
+        f"Y0+:{pinout[other1_macrocell['pad']]}",
+        f"Y1+:{pinout[other2_macrocell['pad']]}",
+    ]
+    lines = [
+        f"#$ PINS {len(pins)} {' '.join(pins)}",
+        f"#$ NODES {len(nodes)} {' '.join(nodes)}",
+        f".i {len(inputs)}",
+        f".o {len(outputs)}",
+        f".type f",
+        f".ilb {' '.join(inputs)}",
+        f".ob {' '.join(outputs)}",
+        f".phase {'1' * len(outputs)}",
+        f".p {len(rows)}",
+        *rows,
+        f".e",
+    ]
+    return toolchain.run("\n".join(lines) + "\n", None, f"{device_name}-{package}", format='tt')
+
+
 with database.transact() as db:
     for device_name, device in db.items():
         progress(device_name)
@@ -21,6 +68,18 @@ with database.transact() as db:
                     break
             else:
                 assert False
+
+            if not toolchain.has_aprim:
+                macrocell.update({
+                    'fb_mux':
+                        bitdiff.describe(1, {
+                            'comb': run_tt2(device_name, device, package, pinout, macrocell_idx,
+                                            other1_macrocell, other2_macrocell, sync=False),
+                            'sync': run_tt2(device_name, device, package, pinout, macrocell_idx,
+                                            other1_macrocell, other2_macrocell, sync=True),
+                        }),
+                })
+                continue
 
             def run(code, **kwargs):
                 return toolchain.run(

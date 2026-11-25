@@ -1,4 +1,5 @@
 import operator
+import subprocess
 import itertools
 from functools import reduce
 from collections import defaultdict
@@ -104,6 +105,10 @@ with database.transact() as db:
                 results[fuses_noconfig.tobytes()].append((mapping, fuses))
             except toolchain.FitterError:
                 pass
+            except subprocess.CalledProcessError:
+                # With TT2 input, the fitter rejects these combinations by exiting with an error.
+                if toolchain.has_aprim:
+                    raise
 
         # Get rid of all configurations that have different netlists, modulo known fuses.
         # The fitter doesn't strongly normalize so we get two different netlists here, ignoring

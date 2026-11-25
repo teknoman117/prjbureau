@@ -3,6 +3,12 @@ from util import database, toolchain, bitdiff, progress
 
 with database.transact() as db:
     for device_name, device in db.items():
+        if not toolchain.has_aprim:
+            # Needs a pad driver for every GOE mux, which the fitter does not accept from TT2 input
+            # (see 021-goe_mux).
+            progress()
+            print(f"Skipping {device_name} because the fuzzer requires EDIF input")
+            continue
         progress(device_name)
 
         package, pinout = next(iter(device['pins'].items()))

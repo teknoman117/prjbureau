@@ -184,7 +184,9 @@ with database.transact() as db:
                 try:
                     fuses = run_pads((pad, *reserved_pads))
                 except subprocess.CalledProcessError as err:
-                    if err.returncode != 250:
+                    # With TT2 input, the fitter fails with 248 instead ("must be placed on global
+                    # pin"), and only accepts GOE inputs from dedicated pins and nodes.
+                    if err.returncode not in (250, 248):
                         raise
                     # Design constrained so that inability to use GOE is a total failure.
                     continue
@@ -224,6 +226,11 @@ with database.transact() as db:
             add_mux_value(f"{macrocell_name}_FB", fuses)
 
         for mux_name, mux in goe_muxes.items():
+            if not toolchain.has_aprim:
+                # With TT2 input, the fitter only accepts dedicated pins and nodes as GOE drivers,
+                # so the pad choices (and therefore the unused value) remain unknown.
+                mux['values']['GND1'] = (1 << len(mux['fuses'])) - 1
+                continue
             # Each GOE mux has exactly one fuse which is never used by the fitter. Hardware testing
             # and celestial rituals demonstrate that this fuse drives the GOE network low.
             assert len(mux['values']) == len(mux['fuses']) - 1, \
