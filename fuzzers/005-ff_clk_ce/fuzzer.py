@@ -12,7 +12,7 @@ with database.transact() as db:
             def run(code):
                 return toolchain.run(
                     f"module top(input CLK2, OE1, output O); "
-                    f"wire Q; TRI tri(Q, 1'b0, O); "
+                    f"wire Q; TRI obuf(Q, 1'b0, O); "
                     f"{code} "
                     f"endmodule",
                     {
