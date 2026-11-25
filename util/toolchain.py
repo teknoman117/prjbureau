@@ -9,12 +9,16 @@ from bitarray import bitarray
 
 from . import root_dir, progress
 from .jesd3 import JESD3Parser
+from . import tt2
 
 
 vendor_dir = os.path.join(root_dir, "vendor")
 work_dir   = os.path.join(root_dir, "work")
 cache_dir  = os.path.join(root_dir, "cache")
 has_cache  = os.path.exists(cache_dir)
+# The fitter builds distributed with WinCUPL do not include `aprim.lib` and cannot read EDIF;
+# with those, Verilog input is translated to TT2 instead (see `util/tt2.py`).
+has_aprim  = os.path.exists(os.path.join(vendor_dir, "aprim.lib"))
 
 fitter_env = {
     **os.environ,
@@ -41,7 +45,7 @@ def run_uncached(input, pins, device, *, strategy={}, options=[], name="work", f
     with open(os.path.join(work_dir, f"{name}.{format}"), "w") as f:
         f.write(input)
 
-    if format == "v":
+    if format == "v" and has_aprim:
         subprocess.check_call([
             "yosys",
             "-q",
@@ -51,6 +55,18 @@ def run_uncached(input, pins, device, *, strategy={}, options=[], name="work", f
             "-p", f"write_edif -attrprop {name}.edif",
         ], cwd=work_dir)
         format = "edif"
+    elif format == "v":
+        subprocess.check_call([
+            "yosys",
+            "-q",
+            "-p", f"read_verilog -lib {os.path.join(root_dir, 'cells.v')}",
+            "-p", f"read_verilog {name}.v",
+            "-p", f"hierarchy -auto-top",
+            "-p", f"write_json {name}.json",
+        ], cwd=work_dir)
+        with open(os.path.join(work_dir, f"{name}.tt"), "w") as f:
+            f.write(tt2.translate_file(os.path.join(work_dir, f"{name}.json"), pins or {}))
+        format = "tt"
 
     if pins is not None:
         with open(os.path.join(work_dir, f"{name}.pin"), "w") as f:
@@ -75,6 +91,10 @@ def run_uncached(input, pins, device, *, strategy={}, options=[], name="work", f
     }
     if series == 'ATF1504BE' and 'no_tff' not in strategy:
         strategy['no_tff'] = 'on'
+    if not has_aprim and 'gclk_itd' in strategy:
+        # The WinCUPL builds spell this option `GCK_ITD`, with the pins numbered from 0.
+        value = strategy.pop('gclk_itd')
+        strategy['GCK_ITD'] = f"GCK{int(value[4:]) - 1}" if value.startswith('GCLK') else value
     strategy_options = []
     for strategy_option in strategy.items():
         strategy_options += ["-strategy", *strategy_option]
