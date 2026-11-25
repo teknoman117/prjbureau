@@ -97,7 +97,7 @@ def run_uncached(input, pins, device, *, strategy={}, options=[], name="work", f
         if "Warning : Conflict" in fitter_log:
             raise FitterError("Conflict")
 
-    with open(os.path.join(work_dir, f"{name}.jed")) as f:
+    with open(os.path.join(work_dir, f"{name}.jed"), "rb") as f:
         parser = JESD3Parser(f.read())
         parser.parse()
         return parser.fuse
