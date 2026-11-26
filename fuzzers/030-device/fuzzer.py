@@ -58,10 +58,12 @@ with database.transact() as db:
             f_pwrdn_n_on  = run(strategy={pin:'on'})
             set_mc_input(f_pwrdn_n_on, f"MC{pwrdn_pads[index][1:]}")
             config.update({
+                # Enabling one power-down pin may also reconfigure the macrocell of the other one
+                # (seen on ATF1508AS with the WinCUPL fitter), so compare the configuration only.
                 f"{pin}_pin_func": bitdiff.describe(1, {
                     'user': f_pwrdn_n_off,
                     'pd':   f_pwrdn_n_on,
-                }),
+                }, scope=range(*device['ranges']['config'])),
             })
 
         if device_name.endswith("AS"):
