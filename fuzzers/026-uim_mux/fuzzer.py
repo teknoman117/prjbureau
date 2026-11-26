@@ -18,7 +18,7 @@ with database.transact() as db:
         uim_mux_range = range(*device['ranges']['uim_muxes'])
         uim_mux_size  = len(uim_mux_range) // len(device['switches'])
 
-        def run(nets, probe_macrocell, *, invert=False):
+        def design(nets, probe_macrocell, *, invert=False):
             pads = [net[:-4] for net in nets if net.endswith("_PAD")]
             fbs  = [net[:-3] for net in nets if net.endswith("_FB")]
             sigs = pads + fbs
@@ -37,7 +37,7 @@ with database.transact() as db:
                             f"a_{n+1}(Y{n}, {', '.join(chunk)}, Y{n+1}); ")
                 y_wire = f"Y{n+1}"
 
-            return toolchain.run(
+            return (
                 f"module top(output Q, {', '.join(ins)}); "
                 f"{' '.join(bffs)} "
                 f"{' '.join(ands)} "
@@ -54,7 +54,12 @@ with database.transact() as db:
                         for fb in fbs
                     },
                 },
-                f"{device_name}-{package}")
+                f"{device_name}-{package}",
+                {})
+
+        def run(nets, probe_macrocell, *, invert=False):
+            input, pins, device_package, kwargs = design(nets, probe_macrocell, invert=invert)
+            return toolchain.run(input, pins, device_package, **kwargs)
 
         for block_name, block in device['blocks'].items():
             progress(4)
@@ -86,19 +91,26 @@ with database.transact() as db:
                 net_sets.difference_update(visited)
                 if not net_sets: break
 
-                found = False
-                for net_set in sorted(net_sets, key=lambda nets: "".join(sorted(nets))):
-                    visited.add(net_set)
-                    nets = set(net_set)
-
+                def probe_for(net_set):
                     for probe_macrocell_name, probe_macrocell in device['macrocells'].items():
                         if probe_macrocell['block'] != block_name: continue
                         if probe_macrocell['pad'] not in pinout: continue
                         if f"{probe_macrocell_name}_FB" in net_set: continue
                         if f"{probe_macrocell['pad']}_PAD" in net_set: continue
-                        break
-                    else:
-                        assert False
+                        return probe_macrocell_name, probe_macrocell
+                    assert False
+
+                # The designs below do not depend on each other's results, so they can be fitted
+                # ahead of time, in parallel.
+                candidates = [(net_set, *probe_for(net_set))
+                              for net_set in sorted(net_sets, key=lambda nets: "".join(sorted(nets)))]
+                toolchain.prefetch([design(sorted(net_set), probe_macrocell)
+                                    for net_set, _, probe_macrocell in candidates])
+
+                found = False
+                for net_set, probe_macrocell_name, probe_macrocell in candidates:
+                    visited.add(net_set)
+                    nets = set(net_set)
                     pt1_fuse_range = range(
                         *device['macrocells'][probe_macrocell_name]['pterm_ranges']['PT1'])
 
