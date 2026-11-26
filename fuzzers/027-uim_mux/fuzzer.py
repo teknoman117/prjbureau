@@ -76,10 +76,21 @@ with database.transact() as db:
 
         extra = 0
         visited = set()
+        # Give up after this many consecutive rounds without a new mux choice: some choices may
+        # never be produced by the fitter (with TT2 input, a few feedback choices of the 1508).
+        max_stalled_rounds = 8
+        stalled_rounds = 0
         while (uim_fuses_known is None or
                     uim_fuses_known + len(device['blocks']) * gnd_per_block < uim_fuses_total):
+            known_before = uim_fuses_known
             uim_fuses_known = sum(len(switch['mux']['values']) - 1
                                   for switch in device['switches'].values())
+            stalled_rounds = stalled_rounds + 1 if uim_fuses_known == known_before else 0
+            if stalled_rounds > max_stalled_rounds:
+                progress()
+                print(f"Giving up on {uim_fuses_total - len(device['blocks']) * gnd_per_block - uim_fuses_known} "
+                      f"UIM mux choices of {device_name} that the fitter does not produce")
+                break
             progress(2)
             progress((uim_fuses_known, uim_fuses_total))
 
@@ -178,7 +189,7 @@ with database.transact() as db:
                         net_set = net_set.union(
                             det_random.sample(sorted(block_uim_nets - net_set), extra))
                         while len(net_set) > 35:
-                            net_set.remove(det_random.sample(sorted(net_set)))
+                            net_set = net_set.difference({det_random.choice(sorted(net_set))})
 
                         if net_set in visited:
                             return False
@@ -224,6 +235,10 @@ with database.transact() as db:
             if 'GND0' in mux['values']: continue
             # Some UIM muxes have one fuse which is never used by the fitter. Hardware testing
             # and celestial rituals demonstrate that this fuse drives the PT input network low.
+            if (len(mux['values']) - 1) < len(mux['fuses']) - 1:
+                # some choices of this mux were not found (see above): the unused one is unknown
+                mux['values']['GND1'] = (1 << len(mux['fuses'])) - 1
+                continue
             assert (len(mux['values']) - 1) in (len(mux['fuses']) - 1, len(mux['fuses'])), \
                    f"UIM mux {switch_name} should have zero or one unused values"
             # Setting the mux to all-ones (erased state) has the exact same result, so call the GND
