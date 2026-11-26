@@ -5,6 +5,7 @@ from bitarray import bitarray
 from .jesd3 import JESD3Parser
 from .svf import SVFParser, SVFEventHandler
 from .device import *
+from .device_be import *
 
 
 def read_jed(file):
@@ -66,7 +67,41 @@ class ATFSVFEventHandler(SVFEventHandler):
             self.bits[self.addr] = self.data
 
 
-def read_svf(file):
+class ATFBESVFEventHandler(ATFSVFEventHandler):
+    """Simulates the BE-series write path: [bank select] [address] [page/word data] [program]."""
+
+    def __init__(self, device):
+        super().__init__()
+        self.device = device
+        self.bank_offset = 0
+        self.pending = None
+
+    def svf_sir(self, tdi, smask, tdo, mask):
+        self.ir = int.from_bytes(tdi.tobytes(), 'little')
+        if self.ir == ATF15xxBEInstr.ISC_SELECT_BANK1:
+            self.bank_offset = 0
+        elif self.ir == ATF15xxBEInstr.ISC_SELECT_BANK2:
+            self.bank_offset = self.device.bank2_offset
+        elif self.ir == ATF15xxBEInstr.ISC_PROGRAM and self.pending is not None:
+            for index, word in enumerate(self.pending):
+                self.bits[self.bank_offset + self.addr + index] = word
+            self.pending = None
+
+    def svf_sdr(self, tdi, smask, tdo, mask):
+        if self.ir == ATF15xxBEInstr.ISC_ADDRESS:
+            # the 16-bit address is shifted MSB first
+            self.addr = int(tdi.to01(), 2)
+        elif self.ir in (ATF15xxBEInstr.ISC_PAGE_DATA, ATF15xxBEInstr.ISC_WORD_DATA):
+            if tdo is None: # verify scans carry TDO; only writes are recorded
+                self.pending = [tdi[i:i + 8] for i in range(0, len(tdi), 8)]
+
+
+def read_svf(file, device=None):
+    if device is not None and issubclass(device, ATF15xxBEDevice):
+        handler = ATFBESVFEventHandler(device)
+        parser = SVFParser(file.read(), handler)
+        parser.parse_file()
+        return handler.bits, ''
     handler = ATFSVFEventHandler()
     parser = SVFParser(file.read(), handler)
     parser.parse_file()
@@ -80,7 +115,93 @@ def _bitarray_to_hex(input_bits):
     return bits.tobytes().hex()
 
 
+def write_svf_be(file, svf_bits, device, *, comment):
+    """BE-series programming sequence, following the one written by Atmel ATMISP 7.3 (see the
+    open-atf150x specification, chapter 7.5): bulk erase, then every word written through the
+    32-word page buffer and the trailing words one at a time, then verified."""
+    I = ATF15xxBEInstr
+    w = file.write
+    def sir(op):
+        w("SIR 10 TDI ({:03x});\n".format(op))
+    def sdr(bits, tdo=False):
+        value = int(bits.to01()[::-1], 2)
+        digits = (len(bits) + 3) // 4
+        if tdo:
+            w("SDR {} TDI ({:0{}x})\n\tTDO ({:0{}x})\n\tMASK ({:0{}x});\n".format(
+                len(bits), value, digits, value, digits, (1 << len(bits)) - 1, digits))
+        else:
+            w("SDR {} TDI ({:0{}x});\n".format(len(bits), value, digits))
+    def byte(value):
+        return bitarray(format(value, '08b')[::-1], endian='little')
+    def addr16(value):
+        return bitarray(format(value, '016b'), endian='little') # MSB first
+    def idle():
+        w("STATE IDLE;\n")
+    def wait_us(us):
+        w("RUNTEST IDLE {}E-6 SEC;\n".format(us))
+    def clocks(n):
+        w("RUNTEST {} TCK;\n".format(n))
+    def hs(sel):
+        sir(sel); idle(); wait_us(1)
+    def words(offset, first, count):
+        out = bitarray(endian='little')
+        for index in range(first, first + count):
+            out += svf_bits[offset + index]
+        return out
+    def write(sel, address, data_ir, data, page):
+        hs(sel)
+        sir(I.ISC_CONTROL); sdr(byte(0x06)); idle(); clocks(8); clocks(10)
+        hs(I.ISC_HANDSHAKE)
+        hs(sel)
+        sir(I.ISC_CONTROL); sdr(byte(0x02)); idle(); clocks(8); clocks(5)
+        sir(I.ISC_ADDRESS); sdr(addr16(address)); idle(); clocks(16)
+        sir(data_ir); sdr(data); idle(); clocks(256 if page else 8)
+        sir(I.ISC_PROGRAM); idle(); wait_us(10001)
+        hs(I.ISC_HANDSHAKE)
+    def read(sel, address, data_ir, data):
+        hs(sel)
+        sir(I.ISC_CONTROL); sdr(byte(0x03)); idle(); clocks(8)
+        sir(I.ISC_ADDRESS); sdr(addr16(address)); idle(); clocks(16)
+        sir(data_ir); sdr(data, tdo=True)
+        idle(); wait_us(1); hs(I.ISC_HANDSHAKE)
+    def enable():
+        sir(I.ISC_ENABLE); sdr(bitarray(format(I.ISC_FLASH_KEY, '010b')[::-1], endian='little')); idle()
+    def disable():
+        sir(I.ISC_DISABLE); sdr(bitarray('0' * 10)); idle(); wait_us(10001)
+
+    for comment_line in comment.splitlines():
+        w("// {}\n".format(comment_line))
+    for line in ("TRST ABSENT;", "ENDIR IDLE;", "ENDDR IDLE;", "HDR 0;", "HIR 0;", "TDR 0;", "TIR 0;",
+                 "STATE RESET;"):
+        w(line + "\n")
+    w("// Check IDCODE\n")
+    sir(I.IDCODE)
+    w("SDR 32 TDI (ffffffff)\n\tTDO ({:08x})\n\tMASK (ffffffff);\n".format(device.idcode))
+    w("// ISC enable, bulk erase\n")
+    enable()
+    sir(I.ISC_BULK_ERASE); idle(); wait_us(1800001)
+    disable()
+    enable()
+    for verify in (False, True):
+        w("// ISC {} words\n".format("verify" if verify else "program"))
+        for bank, last_page, first_word, last_word in device.program_ranges:
+            sel = I.ISC_SELECT_BANK1 if bank == 1 else I.ISC_SELECT_BANK2
+            offset = 0 if bank == 1 else device.bank2_offset
+            for page in range(last_page + 1):
+                data = words(offset, 32 * page, 32)
+                if verify: read(sel, 32 * page, I.ISC_PAGE_DATA, data)
+                else:      write(sel, 32 * page, I.ISC_PAGE_DATA, data, True)
+            for word in range(first_word, last_word + 1):
+                data = words(offset, word, 1)
+                if verify: read(sel, word, I.ISC_WORD_DATA, data)
+                else:      write(sel, word, I.ISC_WORD_DATA, data, False)
+    w("// ISC disable\n")
+    disable()
+
+
 def write_svf(file, svf_bits, device, *, comment):
+    if issubclass(device, ATF15xxBEDevice):
+        return write_svf_be(file, svf_bits, device, comment=comment)
     # This code is kind of awful.
     def emit_header():
         for comment_line in comment.splitlines():
@@ -153,6 +274,17 @@ def write_svf(file, svf_bits, device, *, comment):
     emit_disable()
 
 
+DEVICES = {
+    'ATF1502AS': ATF1502ASDevice,
+    'ATF1504AS': ATF1504ASDevice,
+    'ATF1508AS': ATF1508ASDevice,
+    'ATF1502BE': ATF1502BEDevice,
+    'ATF1504BE': ATF1504BEDevice,
+    'ATF1508BE': ATF1508BEDevice,
+    'ATF1508RE': ATF1508REDevice,
+}
+
+
 class ATFFileType(argparse.FileType):
     def __call__(self, value):
         file = super().__call__(value)
@@ -173,7 +305,7 @@ def arg_parser():
     """))
     parser.add_argument(
         '-d', '--device', metavar='DEVICE',
-        choices=('ATF1502AS', 'ATF1504AS', 'ATF1508AS'), default='ATF1502AS',
+        choices=tuple(DEVICES), default='ATF1502AS',
         help='Select the device to use.')
     parser.add_argument(
         'input', metavar='INPUT', type=ATFFileType('r'),
@@ -187,14 +319,7 @@ def arg_parser():
 def main():
     args = arg_parser().parse_args()
 
-    if args.device == 'ATF1502AS':
-        device = ATF1502ASDevice
-    elif args.device == 'ATF1504AS':
-        device = ATF1504ASDevice
-    elif args.device == 'ATF1508AS':
-        device = ATF1508ASDevice
-    else:
-        assert False
+    device = DEVICES[args.device]
 
     jed_bits = svf_bits = None
     if args.input.name.lower().endswith('.jed'):
@@ -203,7 +328,7 @@ def main():
             raise SystemExit(f"Device has {device.fuse_count} fuses, JED file "
                              f"has {len(jed_bits)}; wrong --device option?")
     elif args.input.name.lower().endswith('.svf'):
-        svf_bits, comment = read_svf(args.input)
+        svf_bits, comment = read_svf(args.input, device)
     else:
         assert False
 
