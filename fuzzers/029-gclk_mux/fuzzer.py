@@ -17,6 +17,9 @@ with database.transact() as db:
         gclk3_pad = device['specials']['CLK3']
         gclk_switches = {name: switch for name, switch in device['globals'].items()
                          if name.startswith('GCLK')}
+        # the probe flip-flops need pins
+        bonded_macrocells = [macrocell for macrocell in device['macrocells'].values()
+                             if macrocell['pad'] in pinout]
 
         def run(clocks, **kwargs):
             code = []
@@ -41,7 +44,7 @@ with database.transact() as db:
                     'E1': pinout['E1'],
                     **{
                         out: pinout[macrocell['pad']]
-                        for out, macrocell in zip(outs, device['macrocells'].values())
+                        for out, macrocell in zip(outs, bonded_macrocells)
                     },
                     'QC': pinout[device['macrocells']['MC8']['pad']],
                 },
@@ -54,7 +57,7 @@ with database.transact() as db:
             mapping = {}
             known_fuses = []
             for index, (pad_n, negedge) in enumerate(clocks):
-                macrocell = list(device['macrocells'].values())[index]
+                macrocell = bonded_macrocells[index]
                 gclk_mux_option = macrocell['gclk_mux']
                 gclk_mux_value = 0
                 for n_fuse, fuse in enumerate(gclk_mux_option['fuses']):

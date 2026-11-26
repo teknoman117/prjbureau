@@ -1,6 +1,6 @@
 from bitarray import bitarray
 
-from util import database, toolchain, bitdiff, progress
+from util import database, toolchain, bitdiff, progress, pterms
 
 
 with database.transact() as db:
@@ -9,12 +9,13 @@ with database.transact() as db:
 
         package, pinout = next(iter(device['pins'].items()))
         for macrocell_name, macrocell in device['macrocells'].items():
+            progress(1)
             if macrocell['pad'] not in pinout:
-                progress()
-                print(f"Skipping {macrocell_name} on {device_name} because it is not bonded out")
+                # Not bonded out: use a flip-flop node in the macrocell instead of its pin.
+                macrocell['pterm_ranges']['PT3'] = pterms.buried_range(
+                    device_name, device, package, pinout, macrocell_name,
+                    "DFFAR dff(.CLK(1'b0), .D(1'b0), .AR({x}), .Q(Q));")
                 continue
-            else:
-                progress(1)
 
             def run(code):
                 return toolchain.run(

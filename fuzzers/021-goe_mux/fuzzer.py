@@ -86,13 +86,15 @@ with database.transact() as db:
         # cause buried nodes to be used for GOE.
         def run_fb(macrocell_idx, macrocell_name):
             for other1_macrocell_name, other1_macrocell in device['macrocells'].items():
-                if other1_macrocell_name != macrocell_name:
+                if (other1_macrocell_name != macrocell_name and
+                        other1_macrocell['pad'] in pinout):
                     break
             else:
                 assert False
             for other2_macrocell_name, other2_macrocell in device['macrocells'].items():
                 if (other2_macrocell_name != macrocell_name and
-                        other2_macrocell_name != other1_macrocell_name):
+                        other2_macrocell_name != other1_macrocell_name and
+                        other2_macrocell['pad'] in pinout):
                     break
             else:
                 assert False

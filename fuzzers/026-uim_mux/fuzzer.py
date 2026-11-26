@@ -93,6 +93,7 @@ with database.transact() as db:
 
                     for probe_macrocell_name, probe_macrocell in device['macrocells'].items():
                         if probe_macrocell['block'] != block_name: continue
+                        if probe_macrocell['pad'] not in pinout: continue
                         if f"{probe_macrocell_name}_FB" in net_set: continue
                         if f"{probe_macrocell['pad']}_PAD" in net_set: continue
                         break
@@ -180,6 +181,7 @@ with database.transact() as db:
 
                 for probe_macrocell_name, probe_macrocell in device['macrocells'].items():
                     if probe_macrocell['block'] != block_name: continue
+                    if probe_macrocell['pad'] not in pinout: continue
                     if f"{probe_macrocell_name}_FB" in uim_net_set: continue
                     if f"{probe_macrocell['pad']}_PAD" in uim_net_set: continue
                     break
