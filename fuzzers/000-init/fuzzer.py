@@ -298,17 +298,17 @@ database.save({
             "VREFB": "M46",
         }
     }),
-    # "ATF1508AS": atf1508xx(**{
-    #     "ranges": {
-    #         "pterms":     [    0, 61440],
-    #         "macrocells": [61440, 65280],
-    #         "uim_muxes":  [65280, 73920],
-    #         "goe_muxes":  [73920, 74082],
-    #         "config":     [74082, 74118],
-    #         "user":       [74118, 74134],
-    #         "reserved":   [74134, 74136],
-    #     },
-    # }),
+    "ATF1508AS": atf1508xx(**{
+        "ranges": {
+            "pterms":     [    0, 61440],
+            "macrocells": [61440, 65280],
+            "uim_muxes":  [65280, 73920],
+            "goe_muxes":  [73920, 74082],
+            "config":     [74082, 74118],
+            "user":       [74118, 74134],
+            "reserved":   [74134, 74136],
+        },
+    }),
     # "ATF1508BE": atf1508xx(**{
     #     "ranges": {
     #         "pterms":     [    0, 61440],

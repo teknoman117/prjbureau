@@ -3,7 +3,7 @@ from util import database, toolchain, bitdiff, progress
 
 with database.transact() as db:
     for device_name, device in db.items():
-        if device_name.startswith('ATF1508'):
+        if device_name.startswith('ATF1508') and toolchain.has_aprim:
             progress()
             print(f"Skipping {device_name} because the fuzzer is broken on it")
             continue
